@@ -1,255 +1,122 @@
-<h1 align="center"><img alt="SoLoBoP" src="https://raw.githubusercontent.com/gist/v-atamanenko/e547f3f0667e4684ca665b11a7ce1e3c/raw/6dd7ce900576ae334cda1886095c09a784663507/solobop_logo.svg"></h1>
+# Ridge Racer Slipstream Vita
+
+<p align="center"><img src="./docs/screenshots/title.jpg"></p>
+
+This is a wrapper/port of <b>Ridge Racer Slipstream</b> for the *PS Vita*.
+
+The port works by loading the official Android ARMv7 executables in memory, resolving its imports with native functions and patching it in order to properly run.
+By doing so, it's basically as if we emulate a minimalist Android environment in which we run natively the executable as is.
+
 <p align="center">
-  <a href="#what-is-this">What is this</a> •
-  <a href="#prerequisites">Prerequisites</a> •
-  <a href="#getting-started">Getting Started</a> •
-  <a href="#project-structure">Project Structure</a> •
-  <a href="#notes-on-internals">Notes on Internals</a> •
-  <a href="#build">Build</a> •
-  <a href="#credits">Credits</a> •
-  <a href="#license">License</a>
+  <img src="./docs/screenshots/screenshot1.jpg" width="32%">
+  <img src="./docs/screenshots/screenshot2.jpg" width="32%">
+  <img src="./docs/screenshots/screenshot3.jpg" width="32%">
 </p>
 
-**solobop** (**so**-**lo**ader **bo**iler**p**late) – a starter kit for Android-to-PSVita ports based on [TheFloW's so_util](https://github.com/Rinnegatamante/so_util).
+## Changelog
 
-## How it works
+### v.1.0
 
-The Vita runs on an ARMv7 CPU which is also the primary architecture of Android devices from around 2012 to 2019. This means native Android game binaries (`.so` files) can, with the right scaffolding, be executed directly on the Vita. This project provides such scaffolding.
+- Initial release.
+- Physical controls: left stick / D-pad to steer, L to brake, R (or Square) for nitro; menus can be fully navigated with the D-pad / left stick, including the rolling menu wheels.
+- Menus run at 60 FPS and races at a steady 30 FPS on most tracks (frame pacing avoids the judder of alternating between 30 and 60 FPS).
+- The game's engine is compiled without optimizations: its hottest rendering and loading functions were rewritten in C or redirected to optimized code (zlib, libpng and libdeflate from the SDK), roughly doubling the race framerate.
+- Greatly reduced loading times: the OBB is opened once and read through a shared cache, and race loads are recorded so the next load of the same track reads its data ahead in the background (race loads went from about a minute to 20-30 seconds).
+- Fixed speckled textures on distant foliage and buildings (vitaGL regenerated the game's mipmaps with a wrong format).
+- Fixed a crash when switching menus with the physical controls (the game un-focused an already deleted menu item).
+- Social network buttons (Facebook, Google Play, Game Center, share), which can't work on the Vita, are hidden.
 
-The core idea is similar to that of [WINE](https://www.winehq.org/): instead of emulating Android, we intercept the game's OS-facing calls and redirect them to native equivalents and/or reimplementations. The `.so` itself runs as-is at the CPU level.
+## Notes and Tips
 
-In practice this means:
-- Loading the `.so` into memory, applying relocations, and resolving its imports against Vita-native implementations (via [so_util](lib/so_util))
-- Providing a fake JVM/JNI environment so the game can do its Java-side initialization (via [FalsoJNI](lib/falso_jni))
-- Reimplementing Android-specific interfaces (mostly NDK-adjacent things) in ways that work on the Vita
+- Online features (online races, challenges, friends, leaderboards and achievements) don't work.
+- The first time a track is loaded is slower: that load is recorded in `ux0:data/ridgeracer/prefetch.bin` and the following loads of the same track are faster. Deleting the file only makes the next load of each track slow again.
+- The very first time each shader is used there can be a small stutter while it is compiled; compiled shaders are cached in `ux0:data/shader_cache/RRSS00001/`.
+- If the car steers by itself, check the game's control settings: a tilt control scheme may be selected.
+- Default controls:
 
-### Projects built on top of Solobop
-
-* [Baldur's Gate: Dark Alliance Port by Nevak](https://github.com/Nevak/bgda-vita)
-* [Modern Combat 3 Port by gl33ntwine](https://github.com/v-atamanenko/mc3-vita)
-* [SoulCalibur Port by Rinnegatamante](https://github.com/Rinnegatamante/soulcalibur_vita)
-* [Geometry Dash Port by hatoving](https://github.com/hatoving/gdash-vita)
-* [Lego Star Wars: The Complete Saga Port by gm666q](https://github.com/gm666q/lswtcs-vita)
-* [Hill Climb Racing Port by MemoryHunter](https://github.com/memory-hunter/hill-climb-racing-vita)
-* [NBA Jam Port by elliencode](https://github.com/elliencode/nba-jam-psv)
-* And more.
-
-
-## Prerequisites
-
-- [VitaSDK-softfp](https://github.com/vitasdk-softfp#how-to-install) installed and `VITASDK` env var pointing to it.
-- [kubridge](https://github.com/bythos14/kubridge) - kernel plugin required for RWX memory; must be installed on the target Vita.
-- Familiarity with C and basic reverse engineering (you'll need to figure out what the `.so` expects).
-- The target game's `.so` extracted from its APK.
-
-If you're new to Vita homebrew development in general, start with [Getting Started with PSVita Homebrew Development](https://web.archive.org/web/20250216192850/https://gl33ntwine.com/posts/develop-for-vita/) first.
-
-## Getting Started
-
-### 0. Use the template (optional)
-
-Press the big green button "Use this template" to create your own repository, if you wish. In that case, replace the repo URL with yours in the steps below.
-
-### 1. Clone with submodules
-
-```sh
-git clone --recurse-submodules https://github.com/v-atamanenko/soloader-boilerplate
-```
-
-Or if you already cloned without them:
-
-```sh
-git submodule update --init --recursive
-```
-
-### 2. Configure `CMakeLists.txt`
-
-At the top of the file, set the basics for your port:
-
-```cmake
-set(VITA_APP_NAME "My Game Port")
-set(VITA_TITLEID  "MYGM00001")      # Must be unique on the device
-set(VITA_VPKNAME  "my_game")
-
-set(DATA_PATH "ux0:data/mygame/" CACHE STRING "Path to data (with trailing /)")
-set(SO_PATH "${DATA_PATH}libmain.so" CACHE STRING "Path to .so")
-```
-
-`DATA_PATH` is where users place the game's data files; `SO_PATH` is the Android `.so` within that folder.
-
-There are also a few toggleable options:
-
-| Option | Default | Description |
-|---|---|---|
-| `NDK_PORT` | OFF | Turn this on if the game uses Android NDK (you can check this if the `.so` has `ANativeActivity_onCreate` in its symbols). |
-| `USE_SCELIBC_IO` | ON | Use SceLibcBridge for IO. Recommended for most ports. |
-| `SHADER_FORMAT` | GLSL | Shader format: `GLSL`, `CG`, or `GXP`. |
-| `DUMP_COMPILED_SHADERS` | ON | Cache compiled shaders on disk (GLSL/CG only). |
-
-### 3. Fill in `dynlib.c`
-
-This is the heart of the port - a symbol table that maps the `.so`'s imported symbols to their Vita-native equivalents. The boilerplate already includes a large set of common libc, math, OpenGL and other symbols. Your job is to handle whatever the specific game needs on top of that.
-
-Run the loader, watch the logs for unresolved symbol warnings, and add them. The pattern is simple:
-
-```c
-// in the dynlib array:
-{ "someFunction", (uintptr_t)someFunction_impl },
-```
-
-Watch out for Bionic/newlib struct size mismatches. The most common ones (pthread, stat, dirent, etc.) are already handled in `source/reimpl/` but there can be more.
-
-### 4. Fill in `java.c`
-
-This is the FalsoJNI implementation file - the fake JVM that the game talks to at startup (and sometimes during runtime). Start with empty arrays as they are now, run the loader, and look for `[GetMethodID]` / `[GetFieldID]` errors in the logs. For each one, implement the corresponding method or field.
-
-See [FalsoJNI's README](lib/falso_jni/README.md) for the full details on how to implement methods and fields.
-
-### 5. Fill in `patch.c`
-
-Game-specific patches go here, if needed. These typically include:
-- Skipping license or DRM checks
-- Working around code that uses unsupported Android APIs
-- Fixing crashes caused by platform differences
-
-Use `hook_addr()` with either a named export or a raw address offset. See [so_util's README](lib/so_util/README.md) for the hooking API.
-
-### 6. Wire up controls in `main.c`
-
-The boilerplate sets up a controls loop that polls buttons, touch, and analog sticks and calls three handler stubs:
-
-```c
-void controls_handler_key(int32_t keycode, ControlsAction action);
-void controls_handler_touch(int32_t id, float x, float y, ControlsAction action);
-void controls_handler_analog(ControlsStickId which, float x, float y, ControlsAction action);
-```
-
-Implement these to call whatever input API the game exposes. `keycode` uses Android's `AKEYCODE_*` constants (defined in `controls.h`) so the game doesn't know the difference.
-
-Also add your main rendering loop:
-
-```c
-int (* JNI_OnLoad)(void *jvm) = (void *)so_symbol(&so_mod, "JNI_OnLoad");
-JNI_OnLoad(&jvm);
-
-gl_init();
-
-// ... any other init the game needs
-
-while (1) {
-    controls_poll();
-    // ... call into the .so to render a frame
-    gl_swap();
-}
-```
-
-## Project Structure
-
-```
-source/
-├── main.c              Entry point, main loop, controls handlers
-├── dynlib.c            Symbol resolution table
-├── java.c              FalsoJNI implementation (JNI methods and fields)
-├── patch.c             Game-specific hooks and patches
-├── reimpl/             Android-compat reimplementations
-│   ├── controls.c/h    Input handling (buttons, touch, analog)
-│   ├── egl.c/h         EGL surface/context stubs
-│   ├── errno.c/h       Bionic errno translation
-│   ├── io.c/h          File I/O wrappers
-│   ├── log.c/h         Android log to Vita log bridge
-│   ├── mem.c/h         Memory-related wrappers
-│   ├── pthr.c/h        pthread struct size compatibility wrappers
-│   ├── sys.c/h         Misc syscall wrappers
-│   ├── time64.c/h      64-bit time functions
-│   └── asset_manager   Android AssetManager reimplementation
-└── utils/
-    ├── dialog.c/h      Fatal error dialog (SceCommonDialog)
-    ├── glutil.c/h      vitaGL init, gl_swap, shader compilation hooks
-    ├── init.c/h        soloader_init_all() / the full init sequence
-    ├── logger.c/h      Logging macros
-    ├── settings.c/h    Persistent settings (load/save/reset)
-    └── utils.c/h       A bunch of useful helpers
-
-lib/
-├── falso_jni/          Fake JVM/JNI interface (submodule)
-├── so_util/            ELF loader and hooking (submodule)
-├── libc_bridge/        SceLibcBridge stubs for IO compatibility
-├── fios/               FIOS2 file I/O overlay
-├── kubridge/           kubridge headers (submodule)
-└── sha1/               SHA-1 implementation
-```
-
-## Notes on Internals
-
-### `soloader_init_all()`
-
-Everything before `main()` calls into the game is handled by `soloader_init_all()` in `source/utils/init.c`. In order, it:
-
-1. Checks for a `-config` launch parameter and redirects to a separate configurator binary if present
-2. Sets CPU/GPU/bus clock frequencies to max (444/222/222/166 MHz)
-3. Initializes FIOS if `USE_SCELIBC_IO` is set
-4. Checks that kubridge is loaded
-5. Checks that the `.so` file exists
-6. Loads and relocates the `.so`
-7. Loads settings
-8. Resolves imports (`dynlib.c`)
-9. Applies patches (`patch.c`)
-10. Flushes caches
-11. Runs init arrays
-12. Pre-initializes vitaGL
-13. Initializes FalsoJNI
-14. Starts the controls thread
-
-### Shader support
-
-The boilerplate hooks `glShaderSource` and `glCompileShader` to intercept GLSL shaders from the game. Depending on `SHADER_FORMAT`:
-
-- **GLSL** - passed directly to VitaGL for runtime GLSL translation (or dumping).
-- **CG** - loaded from disk as `.cg` sources if you wish to translate them manually.
-- **GXP** - loaded from disk as pre-compiled binary `.gxp` files.
-
-When `DUMP_COMPILED_SHADERS` is enabled (GLSL/CG), compiled shader binaries are written to `DATA_PATH` on first run and reused on subsequent launches, saving startup time.
-
-### Settings
-
-`source/utils/settings.c` provides a simple persistent settings system backed by a binary file at `DATA_PATH/settings.bin`. The boilerplate includes two sample settings (`setting_sampleSetting`, `setting_sampleSetting2`); replace these with whatever your port actually needs.
-
-Settings are meant to be exposed through a separate configurator app launched from the Vita's LiveArea. The boilerplate handles the launch redirect automatically but does not provide the configurator app. You can see an example of such in Mass Effect Infiltartor or BackStab HD ports.
-
-## Build
-
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-```
-
-This produces `build/VpkNameYouChose.vpk`. Install it on the Vita like any other homebrew, then copy the game data to `DATA_PATH`.
-
-### Useful CMake targets
-
-| Target | What it does |
+| Vita | Action |
 |---|---|
-| `send` | Upload `eboot.bin` to the Vita over FTP and relaunch |
-| `send_kvdb` | Same, but launches with KVDB debug enabled |
-| `dump` | Pull a crash dump from the Vita and run through vita-parse-core |
-| `reboot` | Reboot the Vita over network |
+| Left stick / D-pad | Steer / navigate menus |
+| Right stick | Rotate menu wheels |
+| L | Brake |
+| R / Square | Nitro |
+| Cross | Confirm |
+| Circle | Back |
+| Start | Pause |
+| Select | Android "Back" |
+| Touch screen | Touch controls |
+| Tilting the Vita | Tilt steering (if selected in the game's settings) |
 
-Set `PSVITAIP` to your Vita's IP for these to work.
+- Optional settings can be written to `ux0:data/ridgeracer/config.txt`, one `name value` per line (e.g. `msaa 1`):
 
-### Debug build
+| Option | Default | Meaning |
+|---|---|---|
+| `msaa` | `1` | Anti-aliasing: `0` off, `1` 2x, `2` 4x (too heavy for the GPU) |
+| `framepacing` | `1` | `1` steady 30 FPS when 60 can't be held, `0` plain vsync, `2` always 30 |
+| `prefetch` | `1` | Record race loads and read their data ahead next time |
+| `obbcache` | `1` | Read the OBB through one shared handle with a small cache |
+| `fastpath` | `1` | Optimized replacements for hot game functions |
+| `rewrite` | `1` | C rewrites of the big render / load functions |
+| `libpng` | `1` | Decode PNGs with the SDK's optimized libpng |
+| `deflate` | `1` | Decompress the OBB data with libdeflate |
+| `cores` | `1` | Pin the game's threads to the Vita's CPU cores |
+| `social` | `0` | `1` shows the (non-working) social network buttons again |
 
-```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+## Setup Instructions (For End Users)
+
+In order to properly install the game, you'll have to follow these steps precisely:
+
+- Install [kubridge](https://github.com/bythos14/kubridge/releases/) by copying `kubridge.skprx` to your taiHEN plugins folder (usually `ux0:tai`) and adding an entry to your `config.txt` under `*KERNEL`:
+
+```
+  *KERNEL
+  ux0:tai/kubridge.skprx
 ```
 
-Debug builds enable `DEBUG_SOLOADER` logging throughout the loader. You can also uncomment lines in `CMakeLists.txt` to enable verbose FalsoJNI logging (`FALSOJNI_DEBUGLEVEL=0`) or OpenGL call logging (`DEBUG_OPENGL`).
+- Install `libshacccg.suprx`, if you don't have it already, by following [this guide](https://samilops2.gitbook.io/vita-troubleshooting-guide/shader-compiler/extract-libshacccg.suprx).
+- Obtain your copy of *Ridge Racer Slipstream* **v2.5.4** legally for Android in form of an `.apk` file and an obb (`main.2319.com.namcobandaigames.ridgeracerss.obb`). [You can get all the required files directly from your phone](https://stackoverflow.com/questions/11012976/how-do-i-get-the-apk-of-an-installed-app-without-root-access) or by using an apk extractor you can find in the play store. Other versions won't work.
+- Open the apk with your zip explorer and extract `lib/armeabi-v7a/libRidgeRacer.so`, `lib/armeabi-v7a/libfmodex.so` and `lib/armeabi-v7a/libfmodevent.so` to `ux0:data/ridgeracer`.
+- From the same apk, extract the `assets` folder to `ux0:data/ridgeracer` (so you get `ux0:data/ridgeracer/assets`).
+- Copy the obb to `ux0:data/ridgeracer` and rename it to `main.obb` (don't extract it).
+- Install the `ridgeracer_slipstream.vpk` from the Release page.
+
+You should end up with:
+
+```
+ux0:data/ridgeracer/
+├── assets/
+├── libfmodevent.so
+├── libfmodex.so
+├── libRidgeRacer.so
+└── main.obb
+```
+
+## Build Instructions (For Developers)
+
+In order to build the loader, you'll need a [vitasdk](https://github.com/vitasdk) build fully compiled with softfp usage.
+
+The required libraries ([so_util](https://github.com/Rinnegatamante/so_util), [FalsoJNI](https://github.com/v-atamanenko/FalsoJNI), [FalsoNDK](https://github.com/elliencode/FalsoNDK), [vitaGL](https://github.com/Rinnegatamante/vitaGL) and [libdeflate](https://github.com/ebiggers/libdeflate)) are included in the `lib` folder with the small fixes this port needs, and vitaGL is built automatically.
+
+After all these requirements are met, you can compile the loader with the following commands:
+
+```bash
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release -DVITA3K_BUILD=OFF && make
+```
+
+Optional CMake flags: `-DVITA3K_BUILD=ON` builds for the Vita3K emulator (software ETC1 textures; it is the default, use `OFF` for real hardware) and `-DPERF_PROFILE=ON` writes frame and loading timings to `ux0:data/ridgeracer/perf.txt`.
+
+vitaGL is built in place in `lib/vitagl`: when switching between builds with different vitaGL flags (Vita3K / real hardware), delete `vitagl_flags.stamp` in the build folder so vitaGL is rebuilt.
 
 ## Credits
 
-- [TheFloW](https://github.com/TheOfficialFloW) - original so-loader, gtasa_vita
-- [Rinnegatamante](https://github.com/Rinnegatamante) - VitaGL, numerous ports and contributions
-- [fgsfds](https://github.com/fgsfds) - various contributions
+- gl33ntwine (Volodymyr Atamanenko) for [soloader-boilerplate](https://github.com/v-atamanenko/soloader-boilerplate), the base this port was built on, and for [FalsoJNI](https://github.com/v-atamanenko/FalsoJNI).
+- TheFloW for the original .so loader.
+- Rinnegatamante for [so_util](https://github.com/Rinnegatamante/so_util) and [vitaGL](https://github.com/Rinnegatamante/vitaGL).
+- elliencode for [FalsoNDK](https://github.com/elliencode/FalsoNDK).
+- bythos14 for [kubridge](https://github.com/bythos14/kubridge).
+- Eric Biggers for [libdeflate](https://github.com/ebiggers/libdeflate).
 
 ## License
 
-This software may be modified and distributed under the terms of the MIT license. See the [LICENSE](LICENSE) file for details.
+The port's code is released under the MIT license (see [LICENSE](LICENSE)), like the boilerplate it is based on. Bundled libraries keep their own licenses (vitaGL: LGPL-3.0, see `lib/vitagl/COPYING*`; FalsoNDK: Apache-2.0; libdeflate: MIT, see `lib/libdeflate/COPYING`).

@@ -27,6 +27,9 @@ void gl_preload();
 
 void gl_swap();
 
+// eglSwapBuffers for the game, with optional frame pacing (config "framepacing")
+EGLBoolean eglSwapBuffers_soloader(EGLDisplay display, EGLSurface surface);
+
 void glCompileShader_soloader(GLuint shader);
 
 void glShaderSource_soloader(GLuint shader, GLsizei count,

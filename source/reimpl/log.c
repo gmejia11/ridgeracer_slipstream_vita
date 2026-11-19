@@ -35,11 +35,17 @@
     }
 
 int __android_log_write(int prio, const char* tag, const char* text) {
+#ifndef DEBUG_SOLOADER
+    if (prio < ANDROID_LOG_ERROR) return 0;
+#endif
     print_common
     return 0;
 }
 
 int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
+#ifndef DEBUG_SOLOADER
+    if (prio < ANDROID_LOG_ERROR) return 0; // the game logs a lot; skip formatting in release
+#endif
     va_list list;
     char text[1024];
 
@@ -53,6 +59,9 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
 }
 
 int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap) {
+#ifndef DEBUG_SOLOADER
+    if (prio < ANDROID_LOG_ERROR) return 0;
+#endif
     char text[1024];
 
     sceClibVsnprintf(text, sizeof(text), fmt, ap);

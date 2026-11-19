@@ -12,12 +12,14 @@
 #include "utils/utils.h"
 #include "utils/dialog.h"
 #include "utils/logger.h"
+#include "utils/settings.h"
 
 #include <stdio.h>
 #include <malloc.h>
 #include <string.h>
 #include <psp2/kernel/sysmem.h>
 #include <psp2/io/stat.h>
+#include <psp2/kernel/threadmgr.h>
 
 // Helpers for our handling of shaders
 GLboolean skip_next_compile = GL_FALSE;
@@ -37,7 +39,57 @@ void gl_preload() {
 }
 
 void gl_init() {
-    vglInitExtended(0, 960, 544, 6 * 1024 * 1024, SCE_GXM_MULTISAMPLE_4X);
+    SceGxmMultisampleMode msaa = SCE_GXM_MULTISAMPLE_NONE;
+    if (setting_msaa == 1) msaa = SCE_GXM_MULTISAMPLE_2X;
+    else if (setting_msaa == 2) msaa = SCE_GXM_MULTISAMPLE_4X;
+    // keep vitaGL's garbage collector off the game's core (see reimpl/pthr.c)
+    if (setting_cores)
+        vglSetupGarbageCollector(0x10000100, SCE_KERNEL_CPU_MASK_USER_2);
+    vglInitExtended(0, 960, 544, 6 * 1024 * 1024, msaa);
+}
+
+/*
+ * Frame pacing. vitaGL presents with vsync at 60 Hz through an asynchronous
+ * display queue; when a frame takes ~20-33 ms some frames stay on screen for
+ * 2 refreshes and others for 3, which reads as stutter. With framepacing 1
+ * (default) frames that can't make 60 fps are shown for exactly 2 refreshes
+ * (steady 30 fps), switching back to 60 fps when there is enough headroom.
+ * framepacing 0 = plain vsync (old behaviour), 2 = always 30 fps.
+ * Work time = time between the end of the previous swap and this one, so the
+ * vsync wait itself is not counted.
+ */
+#include <psp2/kernel/processmgr.h>
+
+EGLBoolean eglSwapBuffers_soloader(EGLDisplay display, EGLSurface surface) {
+    static uint64_t prev_end;
+    static float ema_ms = 10.0f;
+    static int interval = 1, slow_streak, fast_streak;
+
+    uint64_t start = sceKernelGetProcessTimeWide();
+    if (setting_framepacing && prev_end) {
+        float work = (float)(start - prev_end) / 1000.0f;
+        // loading screens / one-off hitches must not flip the mode
+        float w = work > 40.0f ? 40.0f : work;
+        ema_ms += (w - ema_ms) * 0.1f;
+        // 60 fps needs work < 16.7 ms; keep ~1 ms of margin when going back up
+        slow_streak = work > 16.7f ? slow_streak + 1 : 0;
+        fast_streak = work < 15.6f ? fast_streak + 1 : 0;
+
+        int want = interval;
+        if (setting_framepacing == 2)
+            want = 2;
+        else if (interval == 1 && slow_streak >= 20 && ema_ms > 16.7f)
+            want = 2;          // can't hold 60: steady 30
+        else if (interval == 2 && fast_streak >= 30 && ema_ms < 15.2f)
+            want = 1;          // enough headroom again: 60
+        if (want != interval) {
+            interval = want;
+            eglSwapInterval(display, interval);
+        }
+    }
+    EGLBoolean r = eglSwapBuffers(display, surface);
+    prev_end = sceKernelGetProcessTimeWide();
+    return r;
 }
 
 void gl_swap() {

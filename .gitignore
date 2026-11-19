@@ -1,6 +1,39 @@
-build/*
+# Build output
+build/
+build_*/
+cmake-build-*/
+*.vpk
+*.velf
+*.elf
+eboot.bin
+lib/libc_bridge/out/
+
+# Game files: copyrighted, never commit them
+*.so
+*.obb
+*.apk
+*.ipa
+*.xapk
+apk/
+assets/
+
+# Logs / dumps produced on the console
+perf.txt
+menu.txt
+*.psp2dmp
+coredump
+
+# Editors / OS
 .DS_Store
 .idea/
-cmake-build-*/
-lib/libc_bridge/out/
-apk/
+.vscode/
+*:Zone.Identifier
+
+# vitaGL is built in place: keep its sources, not the objects / samples
+lib/vitagl/samples/
+lib/vitagl/libvitaGL.a
+lib/vitagl/**/*.o
+lib/vitagl/**/*.d
+
+# Debug screenshots taken on the console (README images live in docs/)
+/screenshots/

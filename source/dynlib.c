@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <wchar.h>
+#include <arpa/inet.h>
 #include <wctype.h>
 #include <zlib.h>
 #include <locale.h>
@@ -37,6 +38,17 @@
 #include <utime.h>
 
 #include "utils/glutil.h"
+// obbfile.c: shared OBB handle + FILE* wrappers
+int fclose_rr(FILE *f); int fflush_rr(FILE *f); char *fgets_rr(char *s, int n, FILE *f);
+int fputc_rr(int c, FILE *f); int fputs_rr(const char *s, FILE *f);
+size_t fread_rr(void *p, size_t sz, size_t n, FILE *f); int fseek_rr(FILE *f, long o, int w);
+long ftell_rr(FILE *f); size_t fwrite_rr(const void *p, size_t sz, size_t n, FILE *f);
+int getc_rr(FILE *f); int setvbuf_rr(FILE *f, char *b, int m, size_t sz); int ungetc_rr(int c, FILE *f);
+int fprintf_rr(FILE *f, const char *fmt, ...); int vfprintf_rr(FILE *f, const char *fmt, va_list ap);
+int fseeko_rr(FILE *f, long o, int w); long ftello_rr(FILE *f);
+int rename_rr(const char *a, const char *b); int remove_rr(const char *p);
+int unlink_rr(const char *p); int rmdir_rr(const char *p);
+
 #include "utils/utils.h"
 #include "utils/logger.h"
 
@@ -59,6 +71,8 @@
 
 #ifdef NDK_PORT
 #include <falso_ndk/FalsoNDK.h>
+
+
 #endif
 
 const unsigned int __page_size = PAGE_SIZE;
@@ -129,11 +143,88 @@ extern const char *BIONIC_ctype_;
 extern const short *BIONIC_tolower_tab_;
 extern const short *BIONIC_toupper_tab_;
 
+// ---- Ridge Racer Slipstream specific (stubs.c) ----
+extern void *_ZN10NMALibrary9_instanceE;
+extern void *_ZTI21NMALibraryCppDelegate[2];
+void NMALibrary_setAppDelegate(void *, void *);
+void NMALibrary_LaunchInterstitial(void *, const char *);
+void NMALibrary_LaunchRewardedVideo(void *, const char *, const char *, int);
+int32_t AInputQueue_getEvent_rr(void *queue, void **outEvent);
+uintptr_t __gnu_Unwind_Find_exidx(uintptr_t pc, int *pcount);
+int ret0_rr(void);
+int retm1_rr(void);
+void *retnull_rr(void);
+int sigsetjmp_rr(void *env, int savemask);
+void siglongjmp_rr(void *env, int val);
+int writev_rr(int fd, const void *iov, int iovcnt);
+int fnmatch_rr(const char *pattern, const char *string, int flags);
+int chown_rr(const char *path, int owner, int group);
+FILE *fopen_rr(const char *filename, const char *mode);
+int open_rr(const char *path, int oflag, int mode);
+int stat_rr(const char *path, void *buf);
+int access_rr(const char *path, int amode);
+int mkdir_rr(const char *path, int mode);
+void *AAssetManager_open_rr(void *mgr, const char *filename, int mode);
+extern void *_Unwind_Complete;
+extern void *_Unwind_DeleteException;
+extern void *_Unwind_GetDataRelBase;
+extern void *_Unwind_GetLanguageSpecificData;
+extern void *_Unwind_GetRegionStart;
+extern void *_Unwind_GetTextRelBase;
+extern void *_Unwind_RaiseException;
+extern void *_Unwind_Resume;
+extern void *_Unwind_Resume_or_Rethrow;
+extern void *_Unwind_VRS_Get;
+extern void *_Unwind_VRS_Set;
+extern void *__aeabi_ldiv0;
+extern int __fpclassifyd(double);
+extern int socketpair(int, int, int, int *);
+
 static FILE __sF_fake[3];
 
 void *dlsym_soloader(void * handle, const char * symbol);
 
 so_default_dynlib default_dynlib[] = {
+        // ---- Ridge Racer Slipstream specific ----
+        { "_ZN10NMALibrary9_instanceE", (uintptr_t)&_ZN10NMALibrary9_instanceE },
+        { "_ZTI21NMALibraryCppDelegate", (uintptr_t)&_ZTI21NMALibraryCppDelegate },
+        { "_ZN10NMALibrary14setAppDelegateEP21NMALibraryCppDelegate", (uintptr_t)&NMALibrary_setAppDelegate },
+        { "_ZN10NMALibrary18LaunchInterstitialEPKc", (uintptr_t)&NMALibrary_LaunchInterstitial },
+        { "_ZN10NMALibrary19LaunchRewardedVideoEPKcS1_b", (uintptr_t)&NMALibrary_LaunchRewardedVideo },
+        { "_Unwind_Complete", (uintptr_t)&_Unwind_Complete },
+        { "_Unwind_DeleteException", (uintptr_t)&_Unwind_DeleteException },
+        { "_Unwind_GetDataRelBase", (uintptr_t)&_Unwind_GetDataRelBase },
+        { "_Unwind_GetLanguageSpecificData", (uintptr_t)&_Unwind_GetLanguageSpecificData },
+        { "_Unwind_GetRegionStart", (uintptr_t)&_Unwind_GetRegionStart },
+        { "_Unwind_GetTextRelBase", (uintptr_t)&_Unwind_GetTextRelBase },
+        { "_Unwind_RaiseException", (uintptr_t)&_Unwind_RaiseException },
+        { "_Unwind_Resume", (uintptr_t)&_Unwind_Resume },
+        { "_Unwind_Resume_or_Rethrow", (uintptr_t)&_Unwind_Resume_or_Rethrow },
+        { "_Unwind_VRS_Get", (uintptr_t)&_Unwind_VRS_Get },
+        { "_Unwind_VRS_Set", (uintptr_t)&_Unwind_VRS_Set },
+        { "__aeabi_ldiv0", (uintptr_t)&__aeabi_ldiv0 },
+        { "__fpclassifyd", (uintptr_t)&__fpclassifyd },
+        { "fabsf", (uintptr_t)&fabsf },
+        { "div", (uintptr_t)&div },
+        { "wcscat", (uintptr_t)&wcscat },
+        { "inet_addr", (uintptr_t)&inet_addr },
+        { "socketpair", (uintptr_t)&retm1_rr },
+        { "if_nametoindex", (uintptr_t)&ret0_rr },
+        { "alarm", (uintptr_t)&ret0_rr },
+        { "dup2", (uintptr_t)&retm1_rr },
+        { "execl", (uintptr_t)&retm1_rr },
+        { "kill", (uintptr_t)&ret0_rr },
+        { "getuid", (uintptr_t)&ret0_rr },
+        { "geteuid", (uintptr_t)&ret0_rr },
+        { "getgid", (uintptr_t)&ret0_rr },
+        { "getegid", (uintptr_t)&ret0_rr },
+        { "getpwuid", (uintptr_t)&retnull_rr },
+        { "sigsetjmp", (uintptr_t)&sigsetjmp_rr },
+        { "siglongjmp", (uintptr_t)&siglongjmp_rr },
+        { "writev", (uintptr_t)&writev_rr },
+        { "fnmatch", (uintptr_t)&fnmatch_rr },
+        { "chown", (uintptr_t)&chown_rr },
+
         // Common C/C++ internals
         { "_ZNSt8bad_castD1Ev", (uintptr_t)&_ZNSt8bad_castD1Ev },
         { "_ZNSt9exceptionD2Ev", (uintptr_t)&_ZNSt9exceptionD2Ev },
@@ -202,7 +293,7 @@ so_default_dynlib default_dynlib[] = {
         { "__cxa_rethrow", (uintptr_t)&__cxa_rethrow },
         { "__cxa_throw", (uintptr_t)&__cxa_throw },
         { "__cxa_type_match", (uintptr_t)&ret0 },
-        { "__gnu_Unwind_Find_exidx", (uintptr_t)&ret0 },
+        { "__gnu_Unwind_Find_exidx", (uintptr_t)&__gnu_Unwind_Find_exidx },
         { "__gnu_ldivmod_helper", (uintptr_t)&__gnu_ldivmod_helper },
         { "__gnu_unwind_frame", (uintptr_t)&__gnu_unwind_frame },
         { "__google_potentially_blocking_region_begin", (uintptr_t)&ret0 },
@@ -256,7 +347,7 @@ so_default_dynlib default_dynlib[] = {
         { "AAssetDir_close", (uintptr_t)&AAssetDir_close },
         { "AAssetDir_getNextFileName", (uintptr_t)&AAssetDir_getNextFileName },
         { "AAssetManager_fromJava", (uintptr_t)&ret1 },
-        { "AAssetManager_open", (uintptr_t)&AAssetManager_open },
+        { "AAssetManager_open", (uintptr_t)&AAssetManager_open_rr },
         { "AAssetManager_openDir", (uintptr_t)&AAssetManager_openDir },
 
         
@@ -273,7 +364,7 @@ so_default_dynlib default_dynlib[] = {
         {"AInputQueue_attachLooper", (uintptr_t)&AInputQueue_attachLooper},
         {"AInputQueue_detachLooper", (uintptr_t)&AInputQueue_detachLooper},
         {"AInputQueue_finishEvent", (uintptr_t)&AInputQueue_finishEvent},
-        {"AInputQueue_getEvent", (uintptr_t)&AInputQueue_getEvent},
+        {"AInputQueue_getEvent", (uintptr_t)&AInputQueue_getEvent_rr},
         {"AInputQueue_hasEvents", (uintptr_t)&AInputQueue_hasEvents},
         {"AInputQueue_preDispatchEvent", (uintptr_t)&AInputQueue_preDispatchEvent},
         {"AKeyEvent_getAction", (uintptr_t)&AKeyEvent_getAction},
@@ -291,6 +382,28 @@ so_default_dynlib default_dynlib[] = {
         {"ANativeWindow_getHeight", (uintptr_t)&ANativeWindow_getHeight},
         {"ANativeWindow_getWidth", (uintptr_t)&ANativeWindow_getWidth},
         {"ANativeWindow_setBuffersGeometry", (uintptr_t)&ANativeWindow_setBuffersGeometry},
+        {"AConfiguration_getDensity", (uintptr_t)&AConfiguration_getDensity},
+        {"AConfiguration_getKeyboard", (uintptr_t)&AConfiguration_getKeyboard},
+        {"AConfiguration_getKeysHidden", (uintptr_t)&AConfiguration_getKeysHidden},
+        {"AConfiguration_getMcc", (uintptr_t)&AConfiguration_getMcc},
+        {"AConfiguration_getMnc", (uintptr_t)&AConfiguration_getMnc},
+        {"AConfiguration_getNavHidden", (uintptr_t)&AConfiguration_getNavHidden},
+        {"AConfiguration_getNavigation", (uintptr_t)&AConfiguration_getNavigation},
+        {"AConfiguration_getOrientation", (uintptr_t)&AConfiguration_getOrientation},
+        {"AConfiguration_getScreenLong", (uintptr_t)&AConfiguration_getScreenLong},
+        {"AConfiguration_getScreenSize", (uintptr_t)&AConfiguration_getScreenSize},
+        {"AConfiguration_getSdkVersion", (uintptr_t)&AConfiguration_getSdkVersion},
+        {"AConfiguration_getTouchscreen", (uintptr_t)&AConfiguration_getTouchscreen},
+        {"AConfiguration_getUiModeNight", (uintptr_t)&AConfiguration_getUiModeNight},
+        {"AConfiguration_getUiModeType", (uintptr_t)&AConfiguration_getUiModeType},
+        {"AMotionEvent_getPointerId", (uintptr_t)&AMotionEvent_getPointerId},
+        {"ASensorEventQueue_disableSensor", (uintptr_t)&ASensorEventQueue_disableSensor},
+        {"ASensorEventQueue_enableSensor", (uintptr_t)&ASensorEventQueue_enableSensor},
+        {"ASensorEventQueue_getEvents", (uintptr_t)&ASensorEventQueue_getEvents},
+        {"ASensorEventQueue_setEventRate", (uintptr_t)&ASensorEventQueue_setEventRate},
+        {"ASensorManager_createEventQueue", (uintptr_t)&ASensorManager_createEventQueue},
+        {"ASensorManager_getDefaultSensor", (uintptr_t)&ASensorManager_getDefaultSensor},
+        {"ASensorManager_getInstance", (uintptr_t)&ASensorManager_getInstance},
 #endif
 
 
@@ -414,46 +527,46 @@ so_default_dynlib default_dynlib[] = {
 #endif
         { "closedir", (uintptr_t)&closedir_soloader },
         { "execv", (uintptr_t)&ret0 },
-        { "fclose", (uintptr_t)&fclose_soloader },
+        { "fclose", (uintptr_t)&fclose_rr },
         { "fcntl", (uintptr_t)&fcntl_soloader },
-        { "fopen", (uintptr_t)&fopen_soloader },
+        { "fopen", (uintptr_t)&fopen_rr },
         { "fstat", (uintptr_t)&fstat_soloader },
         { "fsync", (uintptr_t)&fsync_soloader },
         { "ioctl", (uintptr_t)&ioctl_soloader },
         { "__open_2", (uintptr_t)&open_soloader },
-        { "open", (uintptr_t)&open_soloader },
+        { "open", (uintptr_t)&open_rr },
         { "opendir", (uintptr_t)&opendir_soloader },
         { "readdir", (uintptr_t)&readdir_soloader },
         { "readdir_r", (uintptr_t)&readdir_r_soloader },
-        { "stat", (uintptr_t)&stat_soloader },
+        { "stat", (uintptr_t)&stat_rr },
         { "utime", (uintptr_t)&utime },
 
         #ifdef USE_SCELIBC_IO
             { "fdopen", (uintptr_t)&sceLibcBridge_fdopen },
             { "feof", (uintptr_t)&sceLibcBridge_feof },
             { "ferror", (uintptr_t)&sceLibcBridge_ferror },
-            { "fflush", (uintptr_t)&sceLibcBridge_fflush },
+            { "fflush", (uintptr_t)&fflush_rr },
             { "fgetc", (uintptr_t)&sceLibcBridge_fgetc },
             { "fgetpos", (uintptr_t)&sceLibcBridge_fgetpos },
-            { "fgets", (uintptr_t)&sceLibcBridge_fgets },
+            { "fgets", (uintptr_t)&fgets_rr },
             { "fileno", (uintptr_t)&sceLibcBridge_fileno },
-            { "fputc", (uintptr_t)&sceLibcBridge_fputc },
-            { "fputs", (uintptr_t)&sceLibcBridge_fputs },
-            { "fread", (uintptr_t)&sceLibcBridge_fread },
+            { "fputc", (uintptr_t)&fputc_rr },
+            { "fputs", (uintptr_t)&fputs_rr },
+            { "fread", (uintptr_t)&fread_rr },
             { "freopen", (uintptr_t)&sceLibcBridge_freopen },
-            { "fseek", (uintptr_t)&sceLibcBridge_fseek },
+            { "fseek", (uintptr_t)&fseek_rr },
             { "fsetpos", (uintptr_t)&sceLibcBridge_fsetpos },
-            { "ftell", (uintptr_t)&sceLibcBridge_ftell },
+            { "ftell", (uintptr_t)&ftell_rr },
             { "fwide", (uintptr_t)&sceLibcBridge_fwide },
-            { "fwrite", (uintptr_t)&sceLibcBridge_fwrite },
-            { "getc", (uintptr_t)&sceLibcBridge_getc },
+            { "fwrite", (uintptr_t)&fwrite_rr },
+            { "getc", (uintptr_t)&getc_rr },
             { "getwc", (uintptr_t)&sceLibcBridge_getwc },
             { "putc", (uintptr_t)&sceLibcBridge_putc },
             { "putchar", (uintptr_t)&sceLibcBridge_putchar },
             { "puts", (uintptr_t)&sceLibcBridge_puts },
             { "putwc", (uintptr_t)&sceLibcBridge_putwc },
-            { "setvbuf", (uintptr_t)&sceLibcBridge_setvbuf },
-            { "ungetc", (uintptr_t)&sceLibcBridge_ungetc },
+            { "setvbuf", (uintptr_t)&setvbuf_rr },
+            { "ungetc", (uintptr_t)&ungetc_rr },
             { "ungetwc", (uintptr_t)&sceLibcBridge_ungetwc },
         #else
             { "fdopen", (uintptr_t)&fdopen },
@@ -484,19 +597,19 @@ so_default_dynlib default_dynlib[] = {
             { "ungetwc", (uintptr_t)&ungetwc },
         #endif
 
-        { "access", (uintptr_t)&access },
+        { "access", (uintptr_t)&access_rr },
         { "basename", (uintptr_t)&basename },
         { "chdir", (uintptr_t)&chdir },
         { "chmod", (uintptr_t)&chmod },
         { "dup", (uintptr_t)&dup },
-        { "fseeko", (uintptr_t)&fseeko }, // TODO: wrap normal fseek for SceLibc version?
-        { "ftello", (uintptr_t)&ftello },
+        { "fseeko", (uintptr_t)&fseeko_rr },
+        { "ftello", (uintptr_t)&ftello_rr },
         { "ftruncate", (uintptr_t)&ftruncate },
         { "getcwd", (uintptr_t)&getcwd },
         { "lseek", (uintptr_t)&lseek },
         { "lseek64", (uintptr_t)&ret0 }, // TODO: implement or stub with warning
         { "lstat", (uintptr_t)&lstat },
-        { "mkdir", (uintptr_t)&mkdir },
+        { "mkdir", (uintptr_t)&mkdir_rr },
 #ifndef NDK_PORT
         { "pipe", (uintptr_t)&pipe },
         { "read", (uintptr_t)&read },
@@ -505,12 +618,12 @@ so_default_dynlib default_dynlib[] = {
         { "read", (uintptr_t)&fndk_read },
 #endif
         { "realpath", (uintptr_t)&realpath },
-        { "remove", (uintptr_t)&remove },
-        { "rename", (uintptr_t)&rename },
+        { "remove", (uintptr_t)&remove_rr },
+        { "rename", (uintptr_t)&rename_rr },
         { "rewind", (uintptr_t)&rewind },
-        { "rmdir", (uintptr_t)&rmdir },
+        { "rmdir", (uintptr_t)&rmdir_rr },
         { "truncate", (uintptr_t)&truncate },
-        { "unlink", (uintptr_t)&unlink },
+        { "unlink", (uintptr_t)&unlink_rr },
 #ifndef NDK_PORT
         { "write", (uintptr_t)&write },
 #else
@@ -531,10 +644,10 @@ so_default_dynlib default_dynlib[] = {
         { "swprintf", (uintptr_t)&swprintf },
 
         #ifdef USE_SCELIBC_IO
-            { "fprintf", (uintptr_t)&sceLibcBridge_fprintf },
+            { "fprintf", (uintptr_t)&fprintf_rr },
             { "fscanf", (uintptr_t)&sceLibcBridge_fscanf },
             { "sscanf", (uintptr_t)&sceLibcBridge_sscanf },
-            { "vfprintf", (uintptr_t)&sceLibcBridge_vfprintf },
+            { "vfprintf", (uintptr_t)&vfprintf_rr },
         #else
             { "fprintf", (uintptr_t)&fprintf },
             { "fscanf", (uintptr_t)&fscanf },
@@ -561,7 +674,7 @@ so_default_dynlib default_dynlib[] = {
         { "eglQueryContext", (uintptr_t)&eglQueryContext },
         { "eglQueryString", (uintptr_t)&eglQueryString },
         { "eglQuerySurface", (uintptr_t)&eglQuerySurface },
-        { "eglSwapBuffers", (uintptr_t)&eglSwapBuffers },
+        { "eglSwapBuffers", (uintptr_t)&eglSwapBuffers_soloader },
         { "eglTerminate", (uintptr_t)&eglTerminate },
 
 
@@ -1115,10 +1228,23 @@ void *dlsym_soloader(void * handle, const char * symbol) {
     return NULL;
 }
 
-void resolve_imports(so_module* mod) {
-    __sF_fake[0] = *stdin;
-    __sF_fake[1] = *stdout;
-    __sF_fake[2] = *stderr;
+static int sf_inited = 0;
+
+void resolve_imports_generic(so_module* mod) {
+    if (!sf_inited) {
+        __sF_fake[0] = *stdin;
+        __sF_fake[1] = *stdout;
+        __sF_fake[2] = *stderr;
+        sf_inited = 1;
+    }
 
     so_resolve(mod, default_dynlib, sizeof(default_dynlib), 0);
+}
+
+void resolve_imports(so_module* mod) {
+#ifdef PERF_PROFILE
+    void perf_wrap_dynlib(so_default_dynlib *tbl, int count);
+    perf_wrap_dynlib(default_dynlib, sizeof(default_dynlib) / sizeof(default_dynlib[0]));
+#endif
+    resolve_imports_generic(mod);
 }

@@ -6,30 +6,43 @@ endif ()
 
 set(CMAKE_TOOLCHAIN_FILE "$ENV{VITASDK}/share/vita.toolchain.cmake" CACHE PATH "Toolchain file")
 
-project(so_loader C CXX)
+project(so_loader C CXX ASM)
 
 include("${VITASDK}/share/vita.cmake" REQUIRED)
 
+
 # Vita application configuration
-set(VITA_APP_NAME "so-loader")
-set(VITA_TITLEID "SLDR00000")
-set(VITA_VPKNAME "so_loader")
+set(VITA_APP_NAME "Ridge Racer Slipstream")
+set(VITA_TITLEID "RRSS00001")
+set(VITA_VPKNAME "ridgeracer_slipstream")
 set(VITA_VERSION "01.00")
 set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 
 # Optional: used for "send" and "dump" targets
-set(PSVITAIP "192.168.0.198" CACHE STRING "PSVita IP (for FTP access)")
+set(PSVITAIP "" CACHE STRING "PSVita IP (for FTP access), e.g. -DPSVITAIP=192.168.1.10")
 set(PARSECOREPATH "$ENV{PARSECOREPATH}" CACHE STRING "vita-parse-core main.py")
 
 # Game-specific definitions
-set(DATA_PATH "ux0:data/gamename/") # Path to data (with trailing /)
-set(SO_PATH "${DATA_PATH}main.so") # Path to .so
-add_definitions(-DDATA_PATH="${DATA_PATH}" -DSO_PATH="${SO_PATH}")
+set(DATA_PATH "ux0:data/ridgeracer/") # Path to data (with trailing /)
+set(SO_PATH "${DATA_PATH}libRidgeRacer.so") # Path to main .so
+set(FMODEX_PATH "${DATA_PATH}libfmodex.so")
+set(FMODEVENT_PATH "${DATA_PATH}libfmodevent.so")
+set(OBB_PATH "${DATA_PATH}main.obb")
+add_definitions(-DDATA_PATH="${DATA_PATH}" -DSO_PATH="${SO_PATH}" -DFMODEX_PATH="${FMODEX_PATH}" -DFMODEVENT_PATH="${FMODEVENT_PATH}" -DOBB_PATH="${OBB_PATH}")
 
 # Port type
-option(NDK_PORT "This should be on if the game is done with Android NDK (has an android_main entry point)" OFF)
+option(NDK_PORT "This should be on if the game is done with Android NDK (has an android_main entry point)" ON)
 if (NDK_PORT)
   add_definitions(-DNDK_PORT)
+endif()
+
+# so_util memory mode:
+#  OFF = kubridge fixed-address blocks (default, required: libRidgeRacer.so
+#        needs ~26MB and VM domain blocks are capped at 16MB).
+#  ON  = VM domain (sceKernelAllocMemBlockForVM).
+option(SO_VM_DOMAIN "Load .so files into a VM domain block instead of kubridge fixed blocks" OFF)
+if (SO_VM_DOMAIN)
+  add_definitions(-DSO_UTIL_VM_DOMAIN -DVM_BLK_SIZE=0x2800000)
 endif()
 
 option(USE_SCELIBC_IO "Use SceLibcBridge for IO and some other std functions" ON)
@@ -49,6 +62,11 @@ else()
 endif()
 
 set(valid_dump_formats GLSL CG)
+option(PERF_PROFILE "Write per-frame timings to ux0:data/ridgeracer/perf.txt" OFF)
+if (PERF_PROFILE)
+  add_definitions(-DPERF_PROFILE)
+endif()
+
 option(DUMP_COMPILED_SHADERS "When using GLSL or CG shader format, cache compiled shaders on disk" OFF)
 if (DUMP_COMPILED_SHADERS)
   if (SHADER_FORMAT IN_LIST valid_dump_formats)
@@ -57,6 +75,11 @@ if (DUMP_COMPILED_SHADERS)
     message(WARNING "DUMP_COMPILED_SHADERS has no effect for the chosen shader format ${SHADER_FORMAT}")
   endif()
 endif()
+
+# Vita3K compatibility: Vita3K has no hardware ETC1 (GXM base format
+# 0x84000000) and crashes on it, this game's textures are ETC1. Turn OFF for
+# real hardware builds to use the faster hardware ETC1 path.
+option(VITA3K_BUILD "Build vitaGL with Vita3K workarounds (software ETC1, etc.)" ON)
 
 # Unique debug definition for loader's logging to not interfere with anything
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -73,10 +96,14 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
   #add_definitions(-DDEBUG_PIPEFD=1)
   #add_definitions(-DDEBUG_CALLBACKS=1)
   # Space-separated flags passed to vitaGL
-  set(VITAGL_MAKE_FLAGS "SOFTFP_ABI=1 TEST=1 LOG_ERRORS=1")
+  set(VITAGL_MAKE_FLAGS "SOFTFP_ABI=1 TEST=1 LOG_ERRORS=1 HAVE_SHADER_CACHE=1")
 else()
   # Space-separated flags passed to vitaGL
-  set(VITAGL_MAKE_FLAGS "SOFTFP_ABI=1 NO_DEBUG=1")
+  set(VITAGL_MAKE_FLAGS "SOFTFP_ABI=1 NO_DEBUG=1 HAVE_SHADER_CACHE=1")
+endif()
+
+if (VITA3K_BUILD)
+  set(VITAGL_MAKE_FLAGS "${VITAGL_MAKE_FLAGS} HAVE_VITA3K_SUPPORT=1")
 endif()
 
 # makes sincos, sincosf, etc. visible
@@ -98,6 +125,20 @@ set(SOURCES
     source/dynlib.c
     source/java.c
     source/patch.c
+    source/audio.c
+    source/stubs.c
+    source/perf.c
+    source/fastpath.c
+    source/obbfile.c
+    source/social.c
+    source/pngfast.c
+    lib/libdeflate/lib/deflate_decompress.c
+    lib/libdeflate/lib/zlib_decompress.c
+    lib/libdeflate/lib/adler32.c
+    lib/libdeflate/lib/utils.c
+    lib/libdeflate/lib/arm/cpu_features.c
+    source/fastpath_asm.S
+    source/controls_rr.c
     source/reimpl/bits/_ctype.c
     source/reimpl/errno.c
     source/reimpl/io.c
@@ -128,6 +169,8 @@ list(APPEND SOURCES
 endif()
 
 add_executable(${CMAKE_PROJECT_NAME} ${SOURCES})
+# libdeflate (MIT, v1.22, decompressor only): fast zlib decompression for asset loading
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/lib/libdeflate)
 
 add_subdirectory(lib/libc_bridge)
 add_dependencies(${CMAKE_PROJECT_NAME} SceLibcBridge)
@@ -207,6 +250,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       SceShaccCgExt
                       taihen_stub
                       SceShaccCg_stub
+                      png16
                       z
                       m
                       ScePgf_stub

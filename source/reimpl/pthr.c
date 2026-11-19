@@ -167,8 +167,66 @@ PTHR_INLINE int _cond_t_static_init(pthread_cond_t_bionic * cond, const pthread_
     return ret;
 }
 
+/*
+ * CPU placement. libRidgeRacer.so is CPU-bound on a single thread (the
+ * android_main loop that runs update + render). Give that thread core 0 for
+ * itself and push every other thread (Bullet workers, RakNet, FMOD, loaders)
+ * to cores 1-2 so they never preempt it. Disable with "cores 0" in config.txt.
+ */
+#include <so_util/so_util.h>
+#include "utils/settings.h"
+
+extern so_module so_mod;
+
+// return address of the pthread_create call in ANativeActivity_onCreate
+// (android_native_app_glue starting android_main), libRidgeRacer.so 2.5.4
+#define RR_MAIN_THREAD_CALLSITE 0x277a04
+
+#define GAME_THREAD_PRIORITY 0x10000100 - 16 // a bit above the default
+
+typedef struct {
+    void *(*start)(void *);
+    void *param;
+    int mask;
+    int prio;
+} thread_trampoline_t;
+
+static void *thread_trampoline(void *arg) {
+    thread_trampoline_t t = *(thread_trampoline_t *)arg;
+    free(arg);
+    sceKernelChangeThreadCpuAffinityMask(0, t.mask);
+    if (t.prio)
+        sceKernelChangeThreadPriority(0, t.prio);
+    return t.start(t.param);
+}
+
+static void *(*wrap_start(void *(*start)(void *), void **param, uintptr_t caller))(void *) {
+    if (!setting_cores)
+        return start;
+
+    thread_trampoline_t *t = malloc(sizeof(*t));
+    if (!t)
+        return start;
+
+    t->start = start;
+    t->param = *param;
+    t->prio = 0;
+    if (caller - so_mod.load_addr == RR_MAIN_THREAD_CALLSITE) {
+        t->mask = SCE_KERNEL_CPU_MASK_USER_0;
+        t->prio = GAME_THREAD_PRIORITY;
+        l_info("pthread_create: game main thread -> core 0");
+    } else {
+        t->mask = SCE_KERNEL_CPU_MASK_USER_1 | SCE_KERNEL_CPU_MASK_USER_2;
+    }
+
+    *param = t;
+    return thread_trampoline;
+}
+
 int pthread_create_soloader(pthread_t *thread, const pthread_attr_t_bionic *attr, void *(*start)(void *), void *param) {
     int ret;
+
+    start = wrap_start(start, &param, (uintptr_t)__builtin_return_address(0));
 
     if (!attr) {
         pthread_attr_t a;

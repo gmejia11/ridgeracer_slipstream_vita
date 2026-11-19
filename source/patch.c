@@ -66,8 +66,21 @@ void kuser_patch(void) {
 	}
 }
 
+void rr_patch(void);
+void controls_menu_patch(void);
+void social_patch(void);
+void perf_patch(void);
+void fastpath_patch(void);
+
 void so_patch(void) {
-	kuser_patch();
+	// No __kuser_* helper references (0xFFFF0FC0/0xFFFF0FA0) exist in any of
+	// the game's .so files, so kuser_patch() (which also needs a fixed block
+	// at 0x9A000000) is not needed.
+	fastpath_patch(); // needs the original -O0 code: run before any other patch
+	rr_patch();
+	controls_menu_patch(); // menu navigation log (profiler build only)
+	social_patch();        // hide Facebook / share widgets
+	perf_patch();
 	// Sample hook with symbol name
 	// hook_addr((uintptr_t)so_symbol(&so_mod, "_ZN6glitch2os7Printer5printEPKcz"), (uintptr_t)&hookedFunction);
 	// Or with offset
