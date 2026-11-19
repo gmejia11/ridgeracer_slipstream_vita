@@ -18,7 +18,7 @@ By doing so, it's basically as if we emulate a minimalist Android environment in
 ### v.1.0
 
 - Initial release.
-- Physical controls: left stick / D-pad to steer, L to brake, R (or Square) for nitro; menus can be fully navigated with the D-pad / left stick, including the rolling menu wheels.
+- Physical controls: left stick / D-pad to steer, L to brake, R (or Square) for nitro; menus can be fully navigated with the D-pad / left stick, including the rolling menu wheels, or with the touch screen.
 - Menus run at 60 FPS and races at a steady 30 FPS on most tracks (frame pacing avoids the judder of alternating between 30 and 60 FPS).
 - The game's engine is compiled without optimizations: its hottest rendering and loading functions were rewritten in C or redirected to optimized code (zlib, libpng and libdeflate from the SDK), roughly doubling the race framerate.
 - Greatly reduced loading times: the OBB is opened once and read through a shared cache, and race loads are recorded so the next load of the same track reads its data ahead in the background (race loads went from about a minute to 20-30 seconds).
@@ -31,6 +31,7 @@ By doing so, it's basically as if we emulate a minimalist Android environment in
 - Online features (online races, challenges, friends, leaderboards and achievements) don't work.
 - The first time a track is loaded is slower: that load is recorded in `ux0:data/ridgeracer/prefetch.bin` and the following loads of the same track are faster. Deleting the file only makes the next load of each track slow again.
 - The very first time each shader is used there can be a small stutter while it is compiled; compiled shaders are cached in `ux0:data/shader_cache/RRSS00001/`.
+- The Vita's touch screen can be used to navigate the game's menus: just tap the options like on a phone.
 - If the car steers by itself, check the game's control settings: a tilt control scheme may be selected.
 - Default controls:
 
@@ -44,7 +45,7 @@ By doing so, it's basically as if we emulate a minimalist Android environment in
 | Circle | Back |
 | Start | Pause |
 | Select | Android "Back" |
-| Touch screen | Touch controls |
+| Touch screen | Navigate menus (tap) / touch controls |
 | Tilting the Vita | Tilt steering (if selected in the game's settings) |
 
 - Optional settings can be written to `ux0:data/ridgeracer/config.txt`, one `name value` per line (e.g. `msaa 1`):
