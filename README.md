@@ -91,6 +91,17 @@ ux0:data/ridgeracer/
 └── main.obb
 ```
 
+## Reporting Issues
+
+If you run into a problem (crash, freeze, graphical glitch, missing sound, controls not working...), please [open an issue](https://github.com/gmejia11/ridgeracer_slipstream_vita/issues/new) and describe it. It helps a lot to include:
+
+- What you were doing when it happened and whether you can make it happen again.
+- Your device (PS Vita 1000 / 2000 / PS TV), firmware and storage (memory card, SD2Vita, USB...).
+- The port version and confirmation that you are using the Android **v2.5.4** apk with the **2319** obb.
+- Your `ux0:data/ridgeracer/config.txt`, if you created one.
+- If the game crashed: the crash dump (`ux0:data/psp2core-*.psp2dmp`) attached to the issue.
+- A screenshot or photo, for graphical problems.
+
 ## Build Instructions (For Developers)
 
 In order to build the loader, you'll need a [vitasdk](https://github.com/vitasdk) build fully compiled with softfp usage.
